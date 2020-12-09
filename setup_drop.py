@@ -1,9 +1,9 @@
 import spacy
-import ujson as json
 import string
 import itertools
 import os
 import numpy as np
+import ujson as json
 
 from word2number.w2n import word_to_num
 from collections import defaultdict
@@ -373,18 +373,18 @@ def process_file(filename, data_type, word_counter, char_counter, debug = False)
 
 
 # Used both for word and char embeddings. # No changes
-def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, num_vectors=None, debug = False):
+def get_embedding(counter, data_type, limit=-1, emb_file=None, common_emb_file = None, vec_size = None, debug = False):
     print(f"Pre-processing {data_type} vectors...")
     embedding_dict = {}
     filtered_elements = [k for k, v in counter.items() if v > limit] # word not included if associated to few QA pairs. limit is actually -1
     if emb_file is not None:
-        assert vec_size is not None
-        with open(emb_file, "r", encoding="utf-8") as fh: # open glove/fasttext
+        with open(emb_file, "r", encoding="utf-8", newline="\n", errors="strict") as fh: # open fasttext
+            n, vec_size = map(int, fh.readline().split()) # read header
             num_examples = 0
-            for line in tqdm(fh, total=num_vectors): # for each line = embedding
-                array = line.split()
-                word = "".join(array[0:-vec_size])
-                vector = list(map(float, array[-vec_size:]))
+            for line in tqdm(fh, total=n): # for each line = embedding
+                array = line.rstrip().split(' ')
+                word = array[0]
+                vector = [float(v) for v in array[1:]]
                 if word in counter and counter[word] > limit: # if the word is in our data, add the embedding to the matrix
                     embedding_dict[word] = vector
 
@@ -393,7 +393,6 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
                 if debug:
                     if num_examples > DEBUG_THRESHOLD:
                         break
-
         print(f"{len(embedding_dict)} / {len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
     else:
         assert vec_size is not None
@@ -405,8 +404,18 @@ def get_embedding(counter, data_type, limit=-1, emb_file=None, vec_size=None, nu
             if debug:
                 if num_examples > DEBUG_THRESHOLD:
                     break
-            
         print(f"{len(filtered_elements)} tokens have corresponding {data_type} embedding vector")
+
+    if common_emb_file is not None:
+        with open(common_emb_file, "r", encoding="utf-8", newline="\n", errors="strict") as fh:
+            n, d = map(int, fh.readline().split()) # read header
+            num_examples = 0
+            for line in tqdm(fh, total=n): # for each line = embedding
+                array = line.rstrip().split(' ')
+                word = array[0]
+                vector = [float(v) for v in array[1:]]
+                if word in counter and counter[word] > limit: # if the word is in our data, add the embedding to the matrix
+                    embedding_dict[word] = vector
 
     NULL = "--NULL--"
     OOV = "--OOV--"
@@ -583,9 +592,9 @@ def pre_process(args, debug = False):
     # process training dataset
     train_examples, train_eval = process_file(args.train_file, "train", word_counter, char_counter, debug = debug)
     word_emb_mat, word2idx_dict = get_embedding(word_counter, "word",
-        emb_file=args.glove_path, vec_size=args.glove_dim, num_vectors=args.glove_num_vecs, debug = debug)
+         emb_file=args.fasttext_en_path, common_emb_file = args.fasttext_common_path, debug = debug)
     char_emb_mat, char2idx_dict = get_embedding(char_counter, "char",
-         emb_file=None, vec_size=args.char_dim, debug = debug)
+         emb_file=None, common_emb_file = None, vec_size=args.char_dim, debug = debug)
 
     # process dev dataset
     dev_examples, dev_eval = process_file(args.dev_file, "dev", word_counter, char_counter, debug = debug)
@@ -627,9 +636,6 @@ if __name__ == "__main__":
 
     # Get command-line args
     args = get_setup_drop_args()
-
-    # Download resources
-    download(args)
 
     nlp = spacy.blank("en")
 

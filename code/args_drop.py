@@ -7,7 +7,7 @@ import argparse
 import os
 
 cwd = os.getcwd()
-data_path = os.path.join(cwd, "data", "drop")
+data_path = os.path.join(cwd, "data")
 
 
 def get_setup_drop_args():
@@ -23,12 +23,12 @@ def get_setup_drop_args():
     parser.add_argument('--dev_file',
                         type=str,
                         default=os.path.join(data_path , 'drop_dataset_dev.json'))
-    parser.add_argument('--glove_url',
+    parser.add_argument('--fasttext_en_path',
                         type=str,
-                        default='http://nlp.stanford.edu/data/glove.840B.300d.zip')
-    parser.add_argument('--glove_path',
+                        default=os.path.join(data_path, 'fasttext/fasttext.en.vec'))
+    parser.add_argument('--fasttext_common_path',
                         type=str,
-                        default=os.path.join(cwd + '/data/glove.840B.300d/glove.840B.300d.txt'))
+                        default=os.path.join(data_path, 'fasttext/fasttext.common.vec'))
     parser.add_argument('--dev_meta_file',
                         type=str,
                         default=os.path.join(data_path, 'dev_meta.json'))
@@ -45,14 +45,14 @@ def get_setup_drop_args():
                         type=int,
                         default=64,
                         help='Size of char vectors (char-level embeddings)')
-    parser.add_argument('--glove_dim',
+    parser.add_argument('--fasttext_dim',
                         type=int,
                         default=300,
-                        help='Size of GloVe word vectors to use')
-    parser.add_argument('--glove_num_vecs',
+                        help='Size of fasttext word vectors to use')
+    parser.add_argument('--fasttext_num_vecs',
                         type=int,
                         default=2196017,
-                        help='Number of GloVe vectors')
+                        help='Number of fasttext vectors')
     parser.add_argument('--ans_limit',
                         type=int,
                         default=30,

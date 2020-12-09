@@ -40,8 +40,7 @@ def main(args):
     
     # set device
     if args.use_gpu and torch.cuda.is_available():
-        # device = torch.device("cuda:{}".format(args.gpu_ids[0]))
-        device = 'cuda'
+        device = torch.device("cuda:{}".format(args.gpu_ids[0]))
         args.batch_size *= max(1, len(args.gpu_ids))
         print(f"device is cuda: gpu_ids = {args.gpu_ids}")
     else:
@@ -74,8 +73,9 @@ def main(args):
         model, step = util.load_model(model, args.load_path, args.gpu_ids)
     else:
         step = 0
-    
-    model = nn.DataParallel(model, args.gpu_ids)
+
+    if device != torch.device('cpu'):
+        model = nn.DataParallel(model, args.gpu_ids)
     model = model.to(device)
     model.train()
     ema = util.EMA(model, args.decay)
@@ -143,6 +143,7 @@ def main(args):
                        start_idxs, end_idxs, counts)
 
                 loss = output_dict["loss"]
+                loss = torch.sum(loss, dim = 0)/loss.size(0)
                 loss_val = loss.item()
 
                 # Backward
