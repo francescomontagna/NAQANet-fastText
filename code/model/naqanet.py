@@ -48,13 +48,17 @@ class NAQANet(QANet):
                  q_max_len: int = 100,
                  p_dropout: float = 0.1,
                  num_heads : int = 8, 
-                 answering_abilities = ['passage_span_extraction', 'counting', 'addition_subtraction'],
+                 answering_abilities = ['passage_span_extraction', 'counting'],
                  max_count = 10): # max number the network can count
         """
         :param hidden_size: hidden size of representation vectors
         :param q_max_len: max number of words in a question sentence
         :param c_max_len: max number of words in a context sentence
         :param p_dropout: dropout probability
+        :param num_head: number of heads for self attention
+        :param answering abilities: answer types supported by the network. 
+                                    Supported values: ['passage_span_extraction', 'counting', 'addition_subtraction']
+        :param max_count: set maximum value up to which the network can count
         """
         super().__init__(
             device, 
@@ -70,7 +74,7 @@ class NAQANet(QANet):
 
         # Implementing numerically augmented output for QANet
         self.answering_abilities = answering_abilities
-        self.max_count = max_count
+        self.max_count = max_count 
 
         # Initialize eval_data to None
         self.eval_data = None
@@ -79,7 +83,9 @@ class NAQANet(QANet):
         self.passage_weights_layer = nn.Linear(hidden_size, 1)
         self.question_weights_layer = nn.Linear(hidden_size, 1)
 
-        # TODO fix
+        # Overwriting self.modeling_encoder_blocks from QANet to reduce the number of layers in the stack.
+        # Higher number of layer lead to memory issues
+        # TODO use DistributedDataParallel to run the model on multi-GPU, and restore stack size = 6
         self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) \
                                              for _ in range(1)])
 
@@ -87,12 +93,10 @@ class NAQANet(QANet):
         if len(self.answering_abilities) > 1:
             self.answer_ability_predictor = nn.Sequential(
                 nn.Linear(2*hidden_size, hidden_size),
-                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, len(self.answering_abilities)),
-                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout)
-            ) # then, apply a softmax
+            )
         
 
         if 'passage_span_extraction' in self.answering_abilities:
@@ -101,26 +105,20 @@ class NAQANet(QANet):
             )
             self.passage_span_start_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                # nn.ReLU()
             )
             self.passage_span_end_predictor = nn.Sequential(
                 nn.Linear(hidden_size * 2, hidden_size),
-                # nn.ReLU(), 
                 nn.Linear(hidden_size, 1),
-                # nn.ReLU() 
-            ) # then, apply a softmax
+            ) 
 
         if 'counting' in self.answering_abilities:
             self.counting_index = self.answering_abilities.index("counting")
             self.count_number_predictor = nn.Sequential(
                 nn.Linear(hidden_size, hidden_size),
-                # nn.ReLU(), 
                 nn.Dropout(p = self.p_dropout),
                 nn.Linear(hidden_size, self.max_count),
-                # nn.ReLU()
-            ) # then, apply a softmax
+            ) 
         
         if 'addition_subtraction' in self.answering_abilities:
             self.addition_subtraction_index = self.answering_abilities.index(
@@ -128,9 +126,7 @@ class NAQANet(QANet):
             )
             self.number_sign_predictor = nn.Sequential(
                 nn.Linear(hidden_size*3, hidden_size),
-                # nn.ReLU(),
                 nn.Linear(hidden_size, 3),
-                # nn.ReLU()
             )
 
     def set_eval_data(self, gold_dict):
@@ -144,12 +140,13 @@ class NAQANet(QANet):
 
         batch_size = cw_idxs.size(0)
 
+        # Forward pass equals to QANet up until last layer
         spans_start, spans_end = super().forward(cw_idxs, cc_idxs, qw_idxs, qc_idxs)
 
-        # The first modeling layer is used to calculate the vector representation of passage
+        # Modeling layer is used to calculate the vector representation of passage
         passage_weights = masked_softmax(self.passage_weights_layer(self.passage_aware_rep).squeeze(-1), self.c_mask_c2q, log_softmax = False)
         passage_vector_rep = passage_weights.unsqueeze(1).bmm(self.passage_aware_rep).squeeze(1)
-        # The second modeling layer is use to calculate the vector representation of question
+        # Modeling layer is use to calculate the vector representation of question
         question_weights = masked_softmax(self.question_weights_layer(self.qb).squeeze(-1), self.q_mask_c2q, log_softmax = False)
         question_vector_rep = question_weights.unsqueeze(1).bmm(self.qb).squeeze(1)
 
@@ -176,9 +173,10 @@ class NAQANet(QANet):
             if len(self.answering_abilities) > 1:
                 best_count_log_prob += answer_ability_log_probs[:, self.counting_index]
 
-        # Sto buttando il mio tempo
+        # TODO: test or remove
         if "addition_subtraction" in self.answering_abilities:
-            # M3
+            
+            # M3 (see NAQANet paper)
             modeled_passage = self.modeled_passage_list[-1]
             for block in self.modeling_encoder_blocks:
                 modeled_passage = self.dropout_layer(
@@ -189,12 +187,9 @@ class NAQANet(QANet):
             encoded_passage_for_numbers = torch.cat(
                 [self.modeled_passage_list[0], self.modeled_passage_list[3]], dim=-1
             )
-
-            # Reshape number indices to (batch_size, # numbers in longest passage)
             
-            # create mask on indices
+            # create mask on indices. Padding value = -1
             number_mask = number_indices != -1
-            # print(f"number_mask {number_mask}")
             clamped_number_indices = number_indices.masked_fill(~number_mask, 0).type(torch.int64).to(self.device)
             number_mask = number_mask.to(self.device)
 
@@ -217,16 +212,11 @@ class NAQANet(QANet):
 
                 number_sign_logits = self.number_sign_predictor(encoded_numbers)
                 number_sign_log_probs = torch.nn.functional.log_softmax(number_sign_logits, -1)
-                # print(f"number_sign_log_probs 1: {number_sign_log_probs}")
 
                 # Shape: (batch_size, # of numbers in passage).
                 best_signs_for_numbers = torch.argmax(number_sign_log_probs, -1)
                 # For padding numbers, the best sign masked as 0 (not included).
                 best_signs_for_numbers = best_signs_for_numbers.masked_fill(~number_mask, 0)
-
-                # TODO fix or remove
-                # print(f"best_signs_for_numbers 2: {best_signs_for_numbers}") # Per qualche motivo se True mi restituisce sempre 2
-
 
                 # Shape: (batch_size, # of numbers in passage)
                 best_signs_log_probs = torch.gather(
@@ -251,7 +241,6 @@ class NAQANet(QANet):
                     print("No numbers in the batch")
 
         
-        # Both paper and code of naqanet implementation differ from paper and code of qanet...
         if "passage_span_extraction" in self.answering_abilities:
             # Shape: (batch_size, passage_length, modeling_dim * 2))
             passage_for_span_start = torch.cat(
@@ -317,6 +306,7 @@ class NAQANet(QANet):
                     # Shape: (batch_size, # of answer spans)
                     gold_passage_span_starts = answer_start_as_passage_spans
                     gold_passage_span_ends = answer_end_as_passage_spans
+
                     # Some spans are padded with index -1,
                     # so we clamp those paddings to 0 and then mask after `torch.gather()`.
                     gold_passage_span_mask = gold_passage_span_starts != -1 # start and end should share same mask
@@ -414,6 +404,9 @@ class NAQANet(QANet):
         
 
 if __name__ == "__main__":
+
+    # Model debugging code
+
     eval_debug = True
     train_debug = False
     debug_real_data = False # debug using train_dataloader

@@ -1,6 +1,4 @@
 """Command-line arguments for setup.py, train.py, test.py.
-Author:
-    Chris Chute (chute@stanford.edu)
 """
 
 import argparse
@@ -38,21 +36,10 @@ def get_setup_drop_args():
     parser.add_argument('--char2idx_file',
                         type=str,
                         default=os.path.join(data_path, 'char2idx.json'))
-    parser.add_argument('--answer_file',
-                        type=str,
-                        default=os.path.join(data_path, 'answer.json'))
     parser.add_argument('--char_dim',
                         type=int,
                         default=64,
                         help='Size of char vectors (char-level embeddings)')
-    parser.add_argument('--fasttext_dim',
-                        type=int,
-                        default=300,
-                        help='Size of fasttext word vectors to use')
-    parser.add_argument('--fasttext_num_vecs',
-                        type=int,
-                        default=2196017,
-                        help='Number of fasttext vectors')
     parser.add_argument('--ans_limit',
                         type=int,
                         default=30,
@@ -61,10 +48,6 @@ def get_setup_drop_args():
                         type=int,
                         default=16,
                         help='Max number of chars to keep from a word')
-    parser.add_argument('--include_test_examples',
-                        type=lambda s: s.lower().startswith('t'),
-                        default=True,
-                        help='Process examples from the test set')
 
     args = parser.parse_args()
 
@@ -73,7 +56,7 @@ def get_setup_drop_args():
 
 def get_train_args():
     """Get arguments needed in train.py."""
-    parser = argparse.ArgumentParser('Train a model on SQuAD')
+    parser = argparse.ArgumentParser('Train a model on DROP')
 
     add_common_args(parser)
     add_train_test_args(parser)
@@ -111,10 +94,6 @@ def get_train_args():
         '--grad_clip',
         default=5.0, type=float,
         help='global Norm gradient clipping rate')
-    parser.add_argument(
-        '--use_ema',
-        default=False, action='store_true',
-        help='whether use exponential moving average')
 
     # model
     parser.add_argument(
@@ -140,7 +119,7 @@ def get_train_args():
         '--gpu_ids',
         type = int,
         action='append',
-        help = 'gpu ids')
+        help = 'gpu ids list')
 
 
     # train & evaluate
@@ -192,33 +171,8 @@ def get_train_args():
     return args
 
 
-# def get_test_args():
-#     """Get arguments needed in test.py."""
-#     parser = argparse.ArgumentParser('Test a trained model on SQuAD')
-
-#     add_common_args(parser)
-#     add_train_test_args(parser)
-
-#     parser.add_argument('--split',
-#                         type=str,
-#                         default='dev',
-#                         choices=('train', 'dev', 'test'),
-#                         help='Split to use for testing.')
-#     parser.add_argument('--sub_file',
-#                         type=str,
-#                         default='submission.csv',
-#                         help='Name for submission file.')
-
-#     # Require load_path for test.py
-#     args = parser.parse_args()
-#     if not args.load_path:
-#         raise argparse.ArgumentError('Missing required argument --load_path')
-
-#     return args
-
-
 def add_common_args(parser):
-    """Add arguments common to all 3 scripts: setup.py, train.py, test.py"""
+    """Add arguments common to setup and trin scripts"""
     parser.add_argument('--train_record_file',
                         type=str,
                         default=os.path.join(data_path, 'train.npz'))
@@ -272,7 +226,6 @@ def add_common_args(parser):
                         help='maximum counting ability of the network')
 
 
-
 def add_train_test_args(parser):
     """Add arguments common to train.py and test.py"""
     parser.add_argument('--name',
@@ -291,10 +244,6 @@ def add_train_test_args(parser):
                         type=str,
                         default='./save/',
                         help='Base directory for saving information.')
-    parser.add_argument('--use_squad_v2',
-                        type=lambda s: s.lower().startswith('t'),
-                        default=True,
-                        help='Whether to use SQuAD 2.0 (unanswerable) questions.')
     parser.add_argument('--num_visuals',
                         type=int,
                         default=10,

@@ -13,7 +13,7 @@ class Pointer(nn.Module):
         self.log_softmax = nn.LogSoftmax(dim=-1)
 
     def forward(self, M:list, c_mask:torch.tensor):
-        M1, M2, M3 = M[0], M[1], M[2]
+        M1, M2, M3 = M[0], M[1], M[2] # M0, M1, M2: see QANet paper
         X1 = torch.cat([M1, M2], dim=-1)
         X2 = torch.cat([M1, M3], dim=-1)
         Y1 = self.W1(X1).squeeze(-1)
@@ -23,4 +23,4 @@ class Pointer(nn.Module):
         span_start_index = self.log_softmax(Y1)
         span_end_index = self.log_softmax(Y2)
         
-        return span_start_index, span_end_index
+        return span_start_index, span_end_index # return start end span-indices log softmax probabilities

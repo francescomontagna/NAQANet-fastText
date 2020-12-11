@@ -1,8 +1,3 @@
-"""Train a model on SQuAD.
-Author:
-    Chris Chute (chute@stanford.edu)
-"""
-
 import numpy as np
 import random
 import torch
@@ -143,7 +138,7 @@ def main(args):
                        start_idxs, end_idxs, counts)
 
                 loss = output_dict["loss"]
-                loss = torch.sum(loss, dim = 0)/loss.size(0)
+                loss = torch.sum(loss, dim = 0)/len(args.gpu_ids) # average over available GPUs
                 loss_val = loss.item()
 
                 # Backward
@@ -171,7 +166,7 @@ def main(args):
                     log.info(f'Evaluating at step {step}...')
                     ema.assign(model)
                     results, pred_dict = evaluate(model, dev_loader, device,
-                                                  args.dev_eval_file)
+                                                  args.dev_eval_file, args.gpu_ids)
                     saver.save(step, model, results[args.metric_name], device)
                     ema.resume(model)
 
@@ -180,16 +175,16 @@ def main(args):
                     log.info(f'Dev {results_str}')
 
 
-def evaluate(model, data_loader, device, eval_file):
+def evaluate(model, data_loader, device, eval_file, gpu_ids):
     nll_meter = util.AverageMeter() 
-
     model.eval()
     pred_dict = dict()
     with open(eval_file, 'r') as fh:
+        # Setup evaluation dictionary. See eval_examples in setup_drop.py for details
         gold_dict = json_load(fh)
     with torch.no_grad(), \
             tqdm(total=len(data_loader.dataset)) as progress_bar:
-        model.module.set_eval_data(gold_dict) # pass eval_data as model state
+        model.module.set_eval_data(gold_dict)
         for cw_idxs, cc_idxs, \
                 qw_idxs, qc_idxs, \
                 start_idxs, end_idxs, \
@@ -211,9 +206,9 @@ def evaluate(model, data_loader, device, eval_file):
                        qw_idxs, qc_idxs, ids,
                        start_idxs, end_idxs, counts)
             loss = output_dict['loss']
+            loss = torch.sum(loss, dim = 0)/len(gpu_ids)
             nll_meter.update(loss.item(), batch_size)
 
-            # Get F1 and EM scores
             # Log info
             progress_bar.update(batch_size)
             progress_bar.set_postfix(NLL=nll_meter.avg)
@@ -222,7 +217,7 @@ def evaluate(model, data_loader, device, eval_file):
     model.module.set_eval_data(None)
     model.train()
 
-
+    # Get F1 and EM scores
     eval_dict = eval_dicts(gold_dict, pred_dict)
     results_list = [('Loss', nll_meter.avg),
                     ('F1', eval_dict['F1']),

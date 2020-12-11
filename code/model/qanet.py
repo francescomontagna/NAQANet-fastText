@@ -10,7 +10,7 @@ from code.modules.cq_attention import CQAttention
 from code.modules.embeddings import Embedding
 from code.modules.utils import set_mask
 from code.util import torch_from_json
-from code.args import get_train_args
+from code.args_drop import get_train_args
 
 
 class QANet(nn.Module):
@@ -24,12 +24,13 @@ class QANet(nn.Module):
                  c_max_len: int = 800,
                  q_max_len: int = 100,
                  p_dropout: float = 0.1,
-                 num_heads : int = 8): # need info for padding?
+                 num_heads : int = 8): 
         """
         :param hidden_size: hidden size of representation vectors
         :param q_max_len: max number of words in a question sentence
         :param c_max_len: max number of words in a context sentence
         :param p_dropout: dropout probability
+        :param num_head: number of heads for self attention
         """
         super().__init__()
 
@@ -38,7 +39,7 @@ class QANet(nn.Module):
         self.p_dropout = p_dropout
         self.dropout_layer = torch.nn.Dropout(p=p_dropout) if p_dropout > 0 else lambda x: x
 
-        # For NAQANet subclass
+        # Initializations for NAQANet subclass
         self.modeled_passage_list = None
         self.passage_aware_rep = None 
         self.c_mask_enc = self.q_mask_enc = self.c_mask_c2q = self.q_mask_c2q = None
@@ -52,7 +53,7 @@ class QANet(nn.Module):
 
         self.modeling_resizing_layer = nn.Linear(4 * hidden_size, hidden_size)
 
-        # Should be 7 but I have memory issues
+        # Should be 7, reduced to 6 for memory issues
         self.modeling_encoder_blocks = nn.ModuleList([EncoderBlock(device, hidden_size, len_sentence=c_max_len, p_dropout=0.1) \
                                              for _ in range(6)])
 
@@ -72,7 +73,7 @@ class QANet(nn.Module):
         self.q_mask_c2q = ~self.q_mask_enc
 
         cb, qb = self.context_encoder(cb, self.c_mask_enc), self.question_encoder(qb, self.q_mask_enc)
-        self.qb = qb # careful to copy
+        self.qb = qb
 
         X = self.cq_attention(cb, qb, self.c_mask_c2q, self.q_mask_c2q)
         self.passage_aware_rep = self.modeling_resizing_layer(X)
@@ -86,7 +87,7 @@ class QANet(nn.Module):
                 )
             modeled_passage_list.append(modeled_passage)
 
-        # Pop the first one, which is input. M0, M1, M2
+        # Pop the first one, which is input. Result is M0, M1, M2
         modeled_passage_list.pop(0)
         
         self.modeled_passage_list = modeled_passage_list
@@ -96,10 +97,11 @@ class QANet(nn.Module):
 
 
 if __name__ == "__main__":
-    test = True
-    
 
-    if test:
+    # Model debugging code
+    debug = True
+
+    if debug:
         torch.manual_seed(22)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         wemb_vocab_size = 5000

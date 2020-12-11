@@ -33,12 +33,14 @@ class DROP(data.Dataset):
         self.context_char_idxs = torch.from_numpy(dataset['context_char_idxs']).long()
         self.question_idxs = torch.from_numpy(dataset['ques_idxs']).long()
         self.question_char_idxs = torch.from_numpy(dataset['ques_char_idxs']).long()
-        # self.number_idxs = torch.from_numpy(dataset['number_idxs']).long()
         self.start_idxs = torch.from_numpy(dataset['start_idxs']).long()
         self.end_idxs = torch.from_numpy(dataset['end_idxs']).long()
         self.counts = torch.from_numpy(dataset['counts']).long()
-        # self.add_sub_expressions = torch.from_numpy(dataset['add_sub_expressions']).long()
         self.ids = torch.from_numpy(dataset['ids']).long()
+
+        # Uncomment for addition_subtraction answer ability
+        # self.number_idxs = torch.from_numpy(dataset['number_idxs']).long()
+        # self.add_sub_expressions = torch.from_numpy(dataset['add_sub_expressions']).long()
 
     def __getitem__(self, idx):
         example = (self.context_idxs[idx],
@@ -58,7 +60,7 @@ class DROP(data.Dataset):
     def __len__(self):
         return self.context_idxs.size(0)
 
-# Need to add padding -1 to start/end indices, number indices, counts and add_sub_expressions
+
 def collate_fn(examples):
     """Create batch tensors from a list of individual examples returned
     by `DROP.__getitem__`. Merge examples of different length by padding
@@ -114,14 +116,14 @@ def collate_fn(examples):
     context_char_idxs = merge_2d(context_char_idxs)
     question_idxs = merge_1d(question_idxs)
     question_char_idxs = merge_2d(question_char_idxs)
-
-    # number_indices = merge_1d(number_indices, pad_value = -1)
     start_indices = merge_1d(start_indices, pad_value = -1)
     end_indices = merge_1d(end_indices, pad_value = -1)
-    counts = merge_0d(counts) # TODO check
-    # add_sub_expressions = merge_2d(add_sub_expressions, pad_value = -1)
-
+    counts = merge_0d(counts) 
     ids = merge_0d(ids)
+
+    # Uncomment for addition_subtraction answer ability
+    # number_indices = merge_1d(number_indices, pad_value = -1)
+    # add_sub_expressions = merge_2d(add_sub_expressions, pad_value = -1)
 
     return (context_idxs, context_char_idxs,
             question_idxs, question_char_idxs,
@@ -130,9 +132,12 @@ def collate_fn(examples):
             )
 
 if __name__ == "__main__":
+
+    # Dataset debugging code
+
     args = get_train_args()
     torch.manual_seed(224)
-    print("Building datasets...", end = " ")
+    print("Building datasets...")
     train_dataset = DROP(args.train_record_file)
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=args.batch_size,
